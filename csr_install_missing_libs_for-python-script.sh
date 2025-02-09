@@ -1,45 +1,72 @@
 #!/bin/bash
 
+# Usage check
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 /path/to/executable"
+    echo "Usage: $0 /path/to/python_script.py"
     exit 1
 fi
 
-executable=$1
-
-# Ensure apt-file is installed
-if ! command -v apt-file &> /dev/null; then
-    sudo apt-get update
-    sudo apt-get install -y apt-file
-    sudo apt-file update
+# python3 check
+if ! command -v python3 &> /dev/null; then
+    echo "python3 is not installed. Please install python3."
+    exit 1
 fi
 
-# Find missing libraries
-missing_libs=$(ldd "$executable" 2>/dev/null | grep "not found" | awk '{print $1}')
+# pip3 check
+if ! command -v pip3 &> /dev/null; then
+    echo "pip3 is not installed. Installing pip3..."
+    sudo apt-get update && sudo apt-get install -y python3-pip
+fi
 
-if [ -z "$missing_libs" ]; then
-    echo "No missing libraries found."
+script="$1"
+
+if [ ! -f "$script" ]; then
+    echo "File not found: $script"
+    exit 1
+fi
+
+echo "Checking python dependencies in $script..."
+
+# python check modules
+modules=$(python3 - <<EOF
+import ast
+with open("$script", "r") as f:
+    tree = ast.parse(f.read(), filename="$script")
+mods = set()
+for node in ast.walk(tree):
+    if isinstance(node, ast.Import):
+        for alias in node.names:
+            mods.add(alias.name.split('.')[0])
+    elif isinstance(node, ast.ImportFrom):
+        if node.module:
+            mods.add(node.module.split('.')[0])
+print(" ".join(sorted(mods)))
+EOF
+)
+
+if [ -z "$modules" ]; then
+    echo "No import statements found."
     exit 0
 fi
 
-echo "Missing libraries:"
-echo "$missing_libs"
+echo "Found modules: $modules"
 
-# Search for packages containing the libraries
-for lib in $missing_libs; do
-    packages=$(apt-file search -l "$lib" | sort -u)
-    if [ -n "$packages" ]; then
-        echo "Packages containing $lib:"
-        echo "$packages"
-        read -p "Install these packages? (y/n) " -n 1 -r
+for mod in $modules; do
+    echo "Checking module: $mod"
+    if python3 -c "import $mod" &> /dev/null; then
+        echo "Module $mod is already installed."
+    else
+        echo "Module $mod is not installed."
+        read -p "Install module $mod? (y/n) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
-            sudo apt-get install -y $packages
+            pkg="$mod"
+            if [ "$mod" = "daemon" ]; then
+                pkg="python-daemon"
+            fi
+            pip3 install "$pkg"
         fi
-    else
-        echo "No package found containing $lib"
     fi
 done
 
-echo "Re-checking libraries..."
-ldd "$executable"
+echo "Pip (python) dependencies checked."
