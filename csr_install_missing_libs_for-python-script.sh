@@ -1,24 +1,22 @@
 #!/bin/bash
-
-# Usage check
 if [ $# -eq 0 ]; then
     echo "Usage: $0 /path/to/python_script.py"
     exit 1
 fi
 
-# python3 check
+# check if python3 is available
 if ! command -v python3 &> /dev/null; then
     echo "python3 is not installed. Please install python3."
     exit 1
 fi
 
-# pip3 check
+# check if pip3 is available (if not -->> install pip)
 if ! command -v pip3 &> /dev/null; then
     echo "pip3 is not installed. Installing pip3..."
     sudo apt-get update && sudo apt-get install -y python3-pip
 fi
 
-script="$1"
+script=$(realpath "$1")
 
 if [ ! -f "$script" ]; then
     echo "File not found: $script"
@@ -27,7 +25,6 @@ fi
 
 echo "Checking python dependencies in $script..."
 
-# python check modules
 modules=$(python3 - <<EOF
 import ast
 with open("$script", "r") as f:
@@ -63,10 +60,12 @@ for mod in $modules; do
             pkg="$mod"
             if [ "$mod" = "daemon" ]; then
                 pkg="python-daemon"
+            elif [ "$mod" = "telegram" ]; then
+                pkg="python-telegram-bot"
             fi
             pip3 install "$pkg"
         fi
     fi
 done
 
-echo "Pip (python) dependencies checked."
+echo "Pip (python) dependencies checked :)"
